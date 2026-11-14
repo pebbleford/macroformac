@@ -33,6 +33,10 @@ final class EventPerformer: MacroPerformer, @unchecked Sendable {
 
     private let source = CGEventSource(stateID: .hidSystemState)
 
+    /// Keys and buttons left pressed by Key Down / Mouse Down steps.
+    private var heldKeys: [UInt16: CGEventFlags] = [:]
+    private var heldButtons: [MouseButton: CGPoint] = [:]
+
     init(typingDelay: Double) {
         self.typingDelay = max(0, typingDelay)
     }
@@ -42,11 +46,21 @@ final class EventPerformer: MacroPerformer, @unchecked Sendable {
         case .typeText(let p):
             try await type(p.text)
         case .keyPress(let p):
-            try await press(keyCode: p.keyCode, modifiers: p.modifiers)
+            try await press(keyCode: p.keyCode, modifiers: p.modifiers, hold: p.holdDuration)
+        case .keyDown(let p):
+            try keyDown(p)
+            try await pause(0.02)
+        case .keyUp(let p):
+            try keyUp(p)
+            try await pause(0.02)
         case .delay(let p):
             try await MacroRunner.defaultSleep(p.seconds)
         case .click(let p):
             try await click(p)
+        case .mouseDown(let p):
+            try await mouseDown(p)
+        case .mouseUp(let p):
+            try await mouseUp(p)
         case .moveMouse(let p):
             try move(to: CGPoint(x: p.x, y: p.y))
             try await pause(0.02)
@@ -108,18 +122,87 @@ final class EventPerformer: MacroPerformer, @unchecked Sendable {
         }
     }
 
-    private func press(keyCode: UInt16, modifiers: KeyModifiers) async throws {
-        guard let down = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(keyCode), keyDown: true),
-              let up = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(keyCode), keyDown: false)
-        else { throw PlaybackError.eventCreationFailed }
+    private func keyFlags(_ keyCode: UInt16, _ modifiers: KeyModifiers) -> CGEventFlags {
         var flags = modifiers.cgFlags
         if KeyCodes.impliesFunctionFlag(keyCode) { flags.insert(.maskSecondaryFn) }
-        down.flags = flags
-        up.flags = flags
+        return flags
+    }
+
+    private func keyEvent(_ keyCode: UInt16, down: Bool, flags: CGEventFlags, isRepeat: Bool = false) throws -> CGEvent {
+        guard let event = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(keyCode), keyDown: down)
+        else { throw PlaybackError.eventCreationFailed }
+        event.flags = flags
+        if isRepeat {
+            event.setIntegerValueField(.keyboardEventAutorepeat, value: 1)
+        }
+        return event
+    }
+
+    /// Presses and releases a key. With `hold` > 0 the key stays down that long.
+    private func press(keyCode: UInt16, modifiers: KeyModifiers, hold: Double = 0) async throws {
+        let flags = keyFlags(keyCode, modifiers)
+        let down = try keyEvent(keyCode, down: true, flags: flags)
+        let up = try keyEvent(keyCode, down: false, flags: flags)
         down.post(tap: .cghidEventTap)
-        try await pause(0.015)
+        do {
+            if hold > 0 {
+                try await holdKey(keyCode, flags: flags, for: hold)
+            } else {
+                try await pause(0.015)
+            }
+        } catch {
+            up.post(tap: .cghidEventTap) // never leave a key stuck down
+            throw error
+        }
         up.post(tap: .cghidEventTap)
         try await pause(0.02)
+    }
+
+    /// Waits while a key is held, sending auto-repeat key downs the way a real keyboard does
+    /// (so holding Delete keeps deleting, holding an arrow keeps moving).
+    private func holdKey(_ keyCode: UInt16, flags: CGEventFlags, for duration: Double) async throws {
+        let (initialDelay, interval) = await MainActor.run { (NSEvent.keyRepeatDelay, NSEvent.keyRepeatInterval) }
+        guard duration > initialDelay, interval > 0 else {
+            try await pause(duration)
+            return
+        }
+        try await pause(initialDelay)
+        var elapsed = initialDelay
+        repeat {
+            try keyEvent(keyCode, down: true, flags: flags, isRepeat: true).post(tap: .cghidEventTap)
+            let step = min(interval, duration - elapsed)
+            try await pause(step)
+            elapsed += step
+        } while elapsed < duration - 0.001
+    }
+
+    private func keyDown(_ key: MacroAction.KeyToggle) throws {
+        let flags = keyFlags(key.keyCode, key.modifiers)
+        try keyEvent(key.keyCode, down: true, flags: flags).post(tap: .cghidEventTap)
+        heldKeys[key.keyCode] = flags
+    }
+
+    private func keyUp(_ key: MacroAction.KeyToggle) throws {
+        heldKeys.removeValue(forKey: key.keyCode)
+        try keyEvent(key.keyCode, down: false, flags: keyFlags(key.keyCode, key.modifiers)).post(tap: .cghidEventTap)
+    }
+
+    /// Releases anything a Key Down or Mouse Down step left pressed. Called when a macro
+    /// finishes, fails or is stopped, so nothing stays stuck down.
+    func releaseHeldInputs() {
+        for (keyCode, flags) in heldKeys {
+            if let up = try? keyEvent(keyCode, down: false, flags: flags) {
+                up.post(tap: .cghidEventTap)
+            }
+        }
+        heldKeys.removeAll()
+        for (button, point) in heldButtons {
+            let types = mouseTypes(for: button)
+            if let up = try? mouseEvent(types.up, at: point, button: types.button) {
+                up.post(tap: .cghidEventTap)
+            }
+        }
+        heldButtons.removeAll()
     }
 
     // MARK: Mouse
@@ -142,8 +225,46 @@ final class EventPerformer: MacroPerformer, @unchecked Sendable {
         return event
     }
 
+    /// Moves the pointer. While a Mouse Down step holds a button, this drags with it.
     private func move(to point: CGPoint) throws {
-        try mouseEvent(.mouseMoved, at: point, button: .left).post(tap: .cghidEventTap)
+        let heldButton: MouseButton? = heldButtons[.left] != nil ? .left : heldButtons.keys.first
+        if let heldButton {
+            let types = mouseTypes(for: heldButton)
+            try mouseEvent(types.drag, at: point, button: types.button).post(tap: .cghidEventTap)
+            heldButtons[heldButton] = point
+        } else {
+            try mouseEvent(.mouseMoved, at: point, button: .left).post(tap: .cghidEventTap)
+        }
+    }
+
+    private func mouseDown(_ press: MacroAction.ButtonToggle) async throws {
+        let point = press.atCurrentPosition ? pointerLocation : CGPoint(x: press.x, y: press.y)
+        if !press.atCurrentPosition {
+            try move(to: point)
+            try await pause(0.03)
+        }
+        let types = mouseTypes(for: press.button)
+        let event = try mouseEvent(types.down, at: point, button: types.button)
+        event.flags = press.modifiers.cgFlags
+        event.setIntegerValueField(.mouseEventClickState, value: 1)
+        event.post(tap: .cghidEventTap)
+        heldButtons[press.button] = point
+        try await pause(0.02)
+    }
+
+    private func mouseUp(_ release: MacroAction.ButtonToggle) async throws {
+        let point = release.atCurrentPosition ? pointerLocation : CGPoint(x: release.x, y: release.y)
+        if !release.atCurrentPosition && point != pointerLocation {
+            try move(to: point)
+            try await pause(0.03)
+        }
+        let types = mouseTypes(for: release.button)
+        let event = try mouseEvent(types.up, at: point, button: types.button)
+        event.flags = release.modifiers.cgFlags
+        event.setIntegerValueField(.mouseEventClickState, value: 1)
+        event.post(tap: .cghidEventTap)
+        heldButtons.removeValue(forKey: release.button)
+        try await pause(0.02)
     }
 
     private func click(_ click: MacroAction.Click) async throws {
@@ -163,7 +284,13 @@ final class EventPerformer: MacroPerformer, @unchecked Sendable {
             down.flags = flags
             up.flags = flags
             down.post(tap: .cghidEventTap)
-            try await pause(0.02)
+            let hold = clickNumber == count && click.holdDuration > 0 ? click.holdDuration : 0.02
+            do {
+                try await pause(hold)
+            } catch {
+                up.post(tap: .cghidEventTap) // never leave a button stuck down
+                throw error
+            }
             up.post(tap: .cghidEventTap)
             try await pause(clickNumber < count ? 0.06 : 0.03)
         }
@@ -179,12 +306,19 @@ final class EventPerformer: MacroPerformer, @unchecked Sendable {
 
         let duration = max(0.05, drag.duration)
         let frames = max(2, Int(duration / 0.016))
-        for frame in 1...frames {
-            try Task.checkCancellation()
-            let t = Double(frame) / Double(frames)
-            let point = CGPoint(x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t)
-            try mouseEvent(.leftMouseDragged, at: point, button: .left).post(tap: .cghidEventTap)
-            try await pause(duration / Double(frames))
+        do {
+            for frame in 1...frames {
+                try Task.checkCancellation()
+                let t = Double(frame) / Double(frames)
+                let point = CGPoint(x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t)
+                try mouseEvent(.leftMouseDragged, at: point, button: .left).post(tap: .cghidEventTap)
+                try await pause(duration / Double(frames))
+            }
+        } catch {
+            if let up = try? mouseEvent(.leftMouseUp, at: pointerLocation, button: .left) {
+                up.post(tap: .cghidEventTap)
+            }
+            throw error
         }
         try mouseEvent(.leftMouseUp, at: to, button: .left).post(tap: .cghidEventTap)
         try await pause(0.03)

@@ -17,8 +17,12 @@ public enum MouseButton: String, Codable, CaseIterable, Hashable, Sendable {
 public enum MacroAction: Hashable, Sendable {
     case typeText(TypeText)
     case keyPress(KeyPress)
+    case keyDown(KeyToggle)
+    case keyUp(KeyToggle)
     case delay(Delay)
     case click(Click)
+    case mouseDown(ButtonToggle)
+    case mouseUp(ButtonToggle)
     case moveMouse(MoveMouse)
     case drag(Drag)
     case scroll(Scroll)
@@ -28,7 +32,8 @@ public enum MacroAction: Hashable, Sendable {
     case appleScript(AppleScript)
 
     public enum Kind: String, Codable, CaseIterable, Identifiable, Sendable {
-        case typeText, keyPress, delay, click, moveMouse, drag, scroll, openApp, openURL, shell, appleScript
+        case typeText, keyPress, keyDown, keyUp, delay, click, mouseDown, mouseUp, moveMouse, drag, scroll
+        case openApp, openURL, shell, appleScript
 
         public var id: String { rawValue }
 
@@ -36,8 +41,12 @@ public enum MacroAction: Hashable, Sendable {
             switch self {
             case .typeText: return "Type Text"
             case .keyPress: return "Press Keys"
+            case .keyDown: return "Key Down (Hold)"
+            case .keyUp: return "Key Up (Release)"
             case .delay: return "Wait"
             case .click: return "Click"
+            case .mouseDown: return "Mouse Button Down"
+            case .mouseUp: return "Mouse Button Up"
             case .moveMouse: return "Move Mouse"
             case .drag: return "Drag"
             case .scroll: return "Scroll"
@@ -53,8 +62,12 @@ public enum MacroAction: Hashable, Sendable {
             switch self {
             case .typeText: return "character.cursor.ibeam"
             case .keyPress: return "command"
+            case .keyDown: return "arrow.down.square"
+            case .keyUp: return "arrow.up.square"
             case .delay: return "timer"
             case .click: return "cursorarrow.click"
+            case .mouseDown: return "arrow.down.circle"
+            case .mouseUp: return "arrow.up.circle"
             case .moveMouse: return "cursorarrow.motionlines"
             case .drag: return "hand.draw"
             case .scroll: return "scroll"
@@ -69,8 +82,10 @@ public enum MacroAction: Hashable, Sendable {
         /// (and therefore needs the Accessibility permission).
         public var postsInputEvents: Bool {
             switch self {
-            case .typeText, .keyPress, .click, .moveMouse, .drag, .scroll: return true
-            case .delay, .openApp, .openURL, .shell, .appleScript: return false
+            case .typeText, .keyPress, .keyDown, .keyUp, .click, .mouseDown, .mouseUp, .moveMouse, .drag, .scroll:
+                return true
+            case .delay, .openApp, .openURL, .shell, .appleScript:
+                return false
             }
         }
 
@@ -78,8 +93,12 @@ public enum MacroAction: Hashable, Sendable {
             switch self {
             case .typeText: return .typeText(TypeText())
             case .keyPress: return .keyPress(KeyPress())
+            case .keyDown: return .keyDown(KeyToggle())
+            case .keyUp: return .keyUp(KeyToggle())
             case .delay: return .delay(Delay())
             case .click: return .click(Click())
+            case .mouseDown: return .mouseDown(ButtonToggle())
+            case .mouseUp: return .mouseUp(ButtonToggle())
             case .moveMouse: return .moveMouse(MoveMouse())
             case .drag: return .drag(Drag())
             case .scroll: return .scroll(Scroll())
@@ -101,14 +120,52 @@ public enum MacroAction: Hashable, Sendable {
     public struct KeyPress: Codable, Hashable, Sendable {
         public var keyCode: UInt16
         public var modifiers: KeyModifiers
-        public init(keyCode: UInt16 = KeyCodes.returnKey, modifiers: KeyModifiers = []) {
+        /// How long the key stays down, in seconds. 0 = a quick tap.
+        public var holdDuration: Double
+
+        public init(keyCode: UInt16 = KeyCodes.returnKey, modifiers: KeyModifiers = [], holdDuration: Double = 0) {
             self.keyCode = keyCode
             self.modifiers = modifiers
+            self.holdDuration = holdDuration
         }
         public init(_ combo: KeyCombo) { self.init(keyCode: combo.keyCode, modifiers: combo.modifiers) }
+
         public var combo: KeyCombo {
             get { KeyCombo(keyCode: keyCode, modifiers: modifiers) }
             set { keyCode = newValue.keyCode; modifiers = newValue.modifiers }
+        }
+
+        private enum CodingKeys: String, CodingKey { case keyCode, modifiers, holdDuration }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            keyCode = try c.decode(UInt16.self, forKey: .keyCode)
+            modifiers = try c.decodeIfPresent(KeyModifiers.self, forKey: .modifiers) ?? []
+            holdDuration = max(0, try c.decodeIfPresent(Double.self, forKey: .holdDuration) ?? 0)
+        }
+    }
+
+    /// A key that goes down (or up) and stays that way until a matching step changes it.
+    public struct KeyToggle: Codable, Hashable, Sendable {
+        public var keyCode: UInt16
+        public var modifiers: KeyModifiers
+
+        public init(keyCode: UInt16 = KeyCodes.space, modifiers: KeyModifiers = []) {
+            self.keyCode = keyCode
+            self.modifiers = modifiers
+        }
+
+        public var combo: KeyCombo {
+            get { KeyCombo(keyCode: keyCode, modifiers: modifiers) }
+            set { keyCode = newValue.keyCode; modifiers = newValue.modifiers }
+        }
+
+        private enum CodingKeys: String, CodingKey { case keyCode, modifiers }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            keyCode = try c.decode(UInt16.self, forKey: .keyCode)
+            modifiers = try c.decodeIfPresent(KeyModifiers.self, forKey: .modifiers) ?? []
         }
     }
 
@@ -127,18 +184,21 @@ public enum MacroAction: Hashable, Sendable {
         public var atCurrentPosition: Bool
         /// Modifier keys held during the click (e.g. ⌘-click).
         public var modifiers: KeyModifiers
+        /// How long the button stays down, in seconds. 0 = a quick click.
+        public var holdDuration: Double
 
         public init(x: Double = 0, y: Double = 0, button: MouseButton = .left, count: Int = 1,
-                    atCurrentPosition: Bool = false, modifiers: KeyModifiers = []) {
+                    atCurrentPosition: Bool = false, modifiers: KeyModifiers = [], holdDuration: Double = 0) {
             self.x = x
             self.y = y
             self.button = button
             self.count = count
             self.atCurrentPosition = atCurrentPosition
             self.modifiers = modifiers
+            self.holdDuration = holdDuration
         }
 
-        private enum CodingKeys: String, CodingKey { case x, y, button, count, atCurrentPosition, modifiers }
+        private enum CodingKeys: String, CodingKey { case x, y, button, count, atCurrentPosition, modifiers, holdDuration }
 
         public init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -146,6 +206,37 @@ public enum MacroAction: Hashable, Sendable {
             y = try c.decodeIfPresent(Double.self, forKey: .y) ?? 0
             button = try c.decodeIfPresent(MouseButton.self, forKey: .button) ?? .left
             count = try c.decodeIfPresent(Int.self, forKey: .count) ?? 1
+            atCurrentPosition = try c.decodeIfPresent(Bool.self, forKey: .atCurrentPosition) ?? false
+            modifiers = try c.decodeIfPresent(KeyModifiers.self, forKey: .modifiers) ?? []
+            holdDuration = max(0, try c.decodeIfPresent(Double.self, forKey: .holdDuration) ?? 0)
+        }
+    }
+
+    /// A mouse button that goes down (or up) and stays that way until a matching step changes it.
+    public struct ButtonToggle: Codable, Hashable, Sendable {
+        public var x: Double
+        public var y: Double
+        public var button: MouseButton
+        /// Ignore x/y and use wherever the pointer currently is.
+        public var atCurrentPosition: Bool
+        public var modifiers: KeyModifiers
+
+        public init(x: Double = 0, y: Double = 0, button: MouseButton = .left,
+                    atCurrentPosition: Bool = true, modifiers: KeyModifiers = []) {
+            self.x = x
+            self.y = y
+            self.button = button
+            self.atCurrentPosition = atCurrentPosition
+            self.modifiers = modifiers
+        }
+
+        private enum CodingKeys: String, CodingKey { case x, y, button, atCurrentPosition, modifiers }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            x = try c.decodeIfPresent(Double.self, forKey: .x) ?? 0
+            y = try c.decodeIfPresent(Double.self, forKey: .y) ?? 0
+            button = try c.decodeIfPresent(MouseButton.self, forKey: .button) ?? .left
             atCurrentPosition = try c.decodeIfPresent(Bool.self, forKey: .atCurrentPosition) ?? false
             modifiers = try c.decodeIfPresent(KeyModifiers.self, forKey: .modifiers) ?? []
         }
@@ -212,8 +303,12 @@ public enum MacroAction: Hashable, Sendable {
         switch self {
         case .typeText: return .typeText
         case .keyPress: return .keyPress
+        case .keyDown: return .keyDown
+        case .keyUp: return .keyUp
         case .delay: return .delay
         case .click: return .click
+        case .mouseDown: return .mouseDown
+        case .mouseUp: return .mouseUp
         case .moveMouse: return .moveMouse
         case .drag: return .drag
         case .scroll: return .scroll
@@ -230,7 +325,11 @@ public enum MacroAction: Hashable, Sendable {
         case .typeText(let p):
             return p.text.isEmpty ? "Type (no text yet)" : "Type “\(Self.preview(p.text))”"
         case .keyPress(let p):
-            return "Press \(p.combo.displayString)"
+            return "Press \(p.combo.displayString)" + Self.held(p.holdDuration)
+        case .keyDown(let p):
+            return "Hold down \(p.combo.displayString)"
+        case .keyUp(let p):
+            return "Release \(p.combo.displayString)"
         case .delay(let p):
             return "Wait \(Self.format(p.seconds)) s"
         case .click(let p):
@@ -244,7 +343,13 @@ public enum MacroAction: Hashable, Sendable {
             let button = p.button == .left ? "" : "\(p.button.title) "
             let mods = p.modifiers.isEmpty ? "" : "\(p.modifiers.symbols)-"
             let place = p.atCurrentPosition ? "at pointer" : "at \(Self.point(p.x, p.y))"
-            return "\(mods)\(button)\(kind) \(place)".capitalizedFirst
+            return "\(mods)\(button)\(kind) \(place)".capitalizedFirst + Self.held(p.holdDuration)
+        case .mouseDown(let p):
+            let place = p.atCurrentPosition ? "at pointer" : "at \(Self.point(p.x, p.y))"
+            return "Press \(p.button.title.lowercased()) button \(place)"
+        case .mouseUp(let p):
+            let place = p.atCurrentPosition ? "at pointer" : "at \(Self.point(p.x, p.y))"
+            return "Release \(p.button.title.lowercased()) button \(place)"
         case .moveMouse(let p):
             return "Move pointer to \(Self.point(p.x, p.y))"
         case .drag(let p):
@@ -263,6 +368,29 @@ public enum MacroAction: Hashable, Sendable {
         case .appleScript(let p):
             return p.source.isEmpty ? "Run AppleScript (empty)" : "AppleScript: \(Self.preview(p.source))"
         }
+    }
+
+    /// The same action with its hold and drag times divided by `speed`
+    /// (waits are scaled by the runner).
+    public func scaledTiming(by speed: Double) -> MacroAction {
+        guard speed > 0, speed != 1 else { return self }
+        switch self {
+        case .keyPress(var p):
+            p.holdDuration /= speed
+            return .keyPress(p)
+        case .click(var p):
+            p.holdDuration /= speed
+            return .click(p)
+        case .drag(var p):
+            p.duration /= speed
+            return .drag(p)
+        default:
+            return self
+        }
+    }
+
+    static func held(_ seconds: Double) -> String {
+        seconds > 0 ? " · held \(format(seconds)) s" : ""
     }
 
     static func preview(_ text: String, limit: Int = 48) -> String {
@@ -304,8 +432,12 @@ extension MacroAction: Codable {
         switch kind {
         case .typeText: self = .typeText(try TypeText(from: decoder))
         case .keyPress: self = .keyPress(try KeyPress(from: decoder))
+        case .keyDown: self = .keyDown(try KeyToggle(from: decoder))
+        case .keyUp: self = .keyUp(try KeyToggle(from: decoder))
         case .delay: self = .delay(try Delay(from: decoder))
         case .click: self = .click(try Click(from: decoder))
+        case .mouseDown: self = .mouseDown(try ButtonToggle(from: decoder))
+        case .mouseUp: self = .mouseUp(try ButtonToggle(from: decoder))
         case .moveMouse: self = .moveMouse(try MoveMouse(from: decoder))
         case .drag: self = .drag(try Drag(from: decoder))
         case .scroll: self = .scroll(try Scroll(from: decoder))
@@ -322,8 +454,12 @@ extension MacroAction: Codable {
         switch self {
         case .typeText(let p): try p.encode(to: encoder)
         case .keyPress(let p): try p.encode(to: encoder)
+        case .keyDown(let p): try p.encode(to: encoder)
+        case .keyUp(let p): try p.encode(to: encoder)
         case .delay(let p): try p.encode(to: encoder)
         case .click(let p): try p.encode(to: encoder)
+        case .mouseDown(let p): try p.encode(to: encoder)
+        case .mouseUp(let p): try p.encode(to: encoder)
         case .moveMouse(let p): try p.encode(to: encoder)
         case .drag(let p): try p.encode(to: encoder)
         case .scroll(let p): try p.encode(to: encoder)
@@ -346,6 +482,14 @@ extension MacroAction {
         get { if case .keyPress(let v) = self { return v } else { return nil } }
         set { if let newValue { self = .keyPress(newValue) } }
     }
+    public var keyDown: KeyToggle? {
+        get { if case .keyDown(let v) = self { return v } else { return nil } }
+        set { if let newValue { self = .keyDown(newValue) } }
+    }
+    public var keyUp: KeyToggle? {
+        get { if case .keyUp(let v) = self { return v } else { return nil } }
+        set { if let newValue { self = .keyUp(newValue) } }
+    }
     public var delay: Delay? {
         get { if case .delay(let v) = self { return v } else { return nil } }
         set { if let newValue { self = .delay(newValue) } }
@@ -353,6 +497,14 @@ extension MacroAction {
     public var click: Click? {
         get { if case .click(let v) = self { return v } else { return nil } }
         set { if let newValue { self = .click(newValue) } }
+    }
+    public var mouseDown: ButtonToggle? {
+        get { if case .mouseDown(let v) = self { return v } else { return nil } }
+        set { if let newValue { self = .mouseDown(newValue) } }
+    }
+    public var mouseUp: ButtonToggle? {
+        get { if case .mouseUp(let v) = self { return v } else { return nil } }
+        set { if let newValue { self = .mouseUp(newValue) } }
     }
     public var moveMouse: MoveMouse? {
         get { if case .moveMouse(let v) = self { return v } else { return nil } }

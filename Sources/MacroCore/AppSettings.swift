@@ -12,18 +12,25 @@ public struct RecordingOptions: Codable, Hashable, Sendable {
     public var maximumDelay: Double
     /// Pointer movement (points) between mouse down and up that counts as a drag.
     public var dragThreshold: Double
+    /// Record how long keys and mouse buttons are held down.
+    public var recordHolds: Bool
+    /// Presses held at least this long (seconds) are recorded as holds; shorter ones are taps.
+    public var minimumHold: Double
 
     public init(mergeTypedText: Bool = true, recordDelays: Bool = true, minimumDelay: Double = 0.05,
-                maximumDelay: Double = 10, dragThreshold: Double = 5) {
+                maximumDelay: Double = 10, dragThreshold: Double = 5,
+                recordHolds: Bool = true, minimumHold: Double = 0.25) {
         self.mergeTypedText = mergeTypedText
         self.recordDelays = recordDelays
         self.minimumDelay = minimumDelay
         self.maximumDelay = maximumDelay
         self.dragThreshold = dragThreshold
+        self.recordHolds = recordHolds
+        self.minimumHold = minimumHold
     }
 
     private enum CodingKeys: String, CodingKey {
-        case mergeTypedText, recordDelays, minimumDelay, maximumDelay, dragThreshold
+        case mergeTypedText, recordDelays, minimumDelay, maximumDelay, dragThreshold, recordHolds, minimumHold
     }
 
     public init(from decoder: Decoder) throws {
@@ -34,6 +41,8 @@ public struct RecordingOptions: Codable, Hashable, Sendable {
         minimumDelay = try c.decodeIfPresent(Double.self, forKey: .minimumDelay) ?? defaults.minimumDelay
         maximumDelay = try c.decodeIfPresent(Double.self, forKey: .maximumDelay) ?? defaults.maximumDelay
         dragThreshold = try c.decodeIfPresent(Double.self, forKey: .dragThreshold) ?? defaults.dragThreshold
+        recordHolds = try c.decodeIfPresent(Bool.self, forKey: .recordHolds) ?? defaults.recordHolds
+        minimumHold = try c.decodeIfPresent(Double.self, forKey: .minimumHold) ?? defaults.minimumHold
     }
 }
 

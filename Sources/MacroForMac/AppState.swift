@@ -229,6 +229,8 @@ final class AppState: ObservableObject {
             } catch {
                 failure = error
             }
+            // Let go of anything a Key Down / Mouse Down step left pressed.
+            performer.releaseHeldInputs()
 
             self.runningMacroID = nil
             self.currentStepID = nil

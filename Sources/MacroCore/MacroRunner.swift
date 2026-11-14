@@ -44,7 +44,7 @@ public enum MacroRunner {
                 if case .delay(let wait) = step.action {
                     try await sleep(wait.seconds / speed)
                 } else {
-                    try await performer.perform(step.action)
+                    try await performer.perform(step.action.scaledTiming(by: speed))
                 }
             }
             iteration += 1

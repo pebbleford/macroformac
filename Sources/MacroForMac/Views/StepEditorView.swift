@@ -30,10 +30,18 @@ struct StepEditorView: View {
             TypeTextEditor(value: payload(\.typeText, .init()))
         case .keyPress:
             KeyPressEditor(value: payload(\.keyPress, .init()))
+        case .keyDown:
+            KeyToggleEditor(value: payload(\.keyDown, .init()), isDown: true)
+        case .keyUp:
+            KeyToggleEditor(value: payload(\.keyUp, .init()), isDown: false)
         case .delay:
             DelayEditor(value: payload(\.delay, .init()))
         case .click:
             ClickEditor(value: payload(\.click, .init()))
+        case .mouseDown:
+            ButtonToggleEditor(value: payload(\.mouseDown, .init()), isDown: true)
+        case .mouseUp:
+            ButtonToggleEditor(value: payload(\.mouseUp, .init()), isDown: false)
         case .moveMouse:
             MoveMouseEditor(value: payload(\.moveMouse, .init()))
         case .drag:
@@ -97,9 +105,59 @@ private struct KeyPressEditor: View {
             }
         }
         ModifierToggles(modifiers: $value.modifiers)
-        Text("Click the shortcut button and press keys, or pick the key and modifiers by hand.")
+        HoldField(seconds: $value.holdDuration, tapLabel: "Quick tap")
+        Text("Click the shortcut button and press keys, or pick the key and modifiers by hand. Holding a key repeats it like a real keyboard.")
             .font(.caption)
             .foregroundStyle(.secondary)
+    }
+}
+
+/// Key Down / Key Up: the key stays pressed between the two steps.
+private struct KeyToggleEditor: View {
+    @Binding var value: MacroAction.KeyToggle
+    let isDown: Bool
+
+    var body: some View {
+        LabeledContent("Key") {
+            KeyComboField(
+                combo: Binding(
+                    get: { value.combo },
+                    set: { if let combo = $0 { value.combo = combo } }
+                ),
+                allowsClear: false
+            )
+        }
+        Picker("Key", selection: $value.keyCode) {
+            ForEach(KeyCodes.all, id: \.code) { key in
+                Text(key.name).tag(key.code)
+            }
+        }
+        ModifierToggles(modifiers: $value.modifiers)
+        Text(isDown
+             ? "Presses the key and keeps it down until a Key Up step for the same key. Anything still held when the macro ends or is stopped is released automatically."
+             : "Releases a key pressed by an earlier Key Down step.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+}
+
+/// "Hold for" seconds, where 0 means a normal quick press.
+private struct HoldField: View {
+    @Binding var seconds: Double
+    var tapLabel: String
+
+    var body: some View {
+        LabeledContent("Hold for") {
+            HStack {
+                TextField("Seconds", value: $seconds, format: .number.precision(.fractionLength(0...2)))
+                    .frame(width: 70)
+                    .multilineTextAlignment(.trailing)
+                Stepper("", value: $seconds, in: 0...3600, step: 0.1)
+                    .labelsHidden()
+                Text(seconds > 0 ? "seconds" : "seconds (\(tapLabel.lowercased()))")
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 }
 
@@ -235,11 +293,44 @@ private struct ClickEditor: View {
             PointFields(title: "Position", x: $value.x, y: $value.y)
         }
 
-        LabeledContent("Hold") {
+        LabeledContent("Hold keys") {
             ModifierToggles(modifiers: $value.modifiers)
         }
 
+        HoldField(seconds: $value.holdDuration, tapLabel: "Quick click")
+
         Text("Positions are screen points from the top-left corner of the main display.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+}
+
+/// Mouse Button Down / Up: the button stays pressed between the two steps.
+private struct ButtonToggleEditor: View {
+    @Binding var value: MacroAction.ButtonToggle
+    let isDown: Bool
+
+    var body: some View {
+        Picker("Button", selection: $value.button) {
+            ForEach(MouseButton.allCases, id: \.self) { button in
+                Text(button.title).tag(button)
+            }
+        }
+        .pickerStyle(.segmented)
+
+        Toggle("Wherever the pointer is", isOn: $value.atCurrentPosition)
+
+        if !value.atCurrentPosition {
+            PointFields(title: "Position", x: $value.x, y: $value.y)
+        }
+
+        LabeledContent("Hold keys") {
+            ModifierToggles(modifiers: $value.modifiers)
+        }
+
+        Text(isDown
+             ? "Presses the button and keeps it down until a Mouse Button Up step. Move Mouse steps in between drag with it. A button still held when the macro ends is released automatically."
+             : "Releases a button pressed by an earlier Mouse Button Down step.")
             .font(.caption)
             .foregroundStyle(.secondary)
     }

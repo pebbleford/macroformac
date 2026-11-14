@@ -5,8 +5,14 @@ final class CodingTests: XCTestCase {
     private let allActions: [MacroAction] = [
         .typeText(.init(text: "Hello\nWorld 👋")),
         .keyPress(.init(keyCode: 8, modifiers: [.command, .shift])),
+        .keyPress(.init(keyCode: 13, holdDuration: 1.5)),
+        .keyDown(.init(keyCode: 13, modifiers: .shift)),
+        .keyUp(.init(keyCode: 13)),
         .delay(.init(seconds: 1.25)),
         .click(.init(x: 10, y: 20, button: .right, count: 2, atCurrentPosition: false, modifiers: .command)),
+        .click(.init(x: 1, y: 2, holdDuration: 0.75)),
+        .mouseDown(.init(x: 3, y: 4, button: .left, atCurrentPosition: false)),
+        .mouseUp(.init(button: .right)),
         .moveMouse(.init(x: 5, y: 6)),
         .drag(.init(fromX: 1, fromY: 2, toX: 3, toY: 4, duration: 0.5)),
         .scroll(.init(dx: -3, dy: 120)),
@@ -55,6 +61,12 @@ final class CodingTests: XCTestCase {
         XCTAssertEqual(macro.steps[0].action, .click(.init(x: 3, y: 4)))
         XCTAssertTrue(macro.steps[0].isEnabled)
         XCTAssertFalse(macro.steps[1].isEnabled)
+    }
+
+    func testOlderFilesWithoutHoldTimesStillLoad() throws {
+        let json = #"[{"type": "keyPress", "keyCode": 36, "modifiers": 0}, {"type": "click", "x": 1, "y": 2}]"#
+        let actions = try JSONDecoder().decode([MacroAction].self, from: Data(json.utf8))
+        XCTAssertEqual(actions, [.keyPress(.init(keyCode: 36)), .click(.init(x: 1, y: 2))])
     }
 
     func testDecodeAcceptsArrayAndSingleMacro() throws {
@@ -132,6 +144,13 @@ final class SummaryTests: XCTestCase {
         XCTAssertEqual(MacroAction.typeText(.init(text: "a\nb")).summary, "Type “a⏎b”")
         XCTAssertEqual(MacroAction.openApp(.init(path: "/Applications/Safari.app")).summary, "Open Safari")
         XCTAssertEqual(MacroAction.scroll(.init(dx: 0, dy: -200)).summary, "Scroll down 200")
+        XCTAssertEqual(MacroAction.keyPress(.init(keyCode: 13, holdDuration: 1.2)).summary, "Press W · held 1.2 s")
+        XCTAssertEqual(MacroAction.click(.init(x: 5, y: 6, holdDuration: 2)).summary, "Click at (5, 6) · held 2 s")
+        XCTAssertEqual(MacroAction.keyDown(.init(keyCode: 49)).summary, "Hold down Space")
+        XCTAssertEqual(MacroAction.keyUp(.init(keyCode: 49)).summary, "Release Space")
+        XCTAssertEqual(MacroAction.mouseDown(.init(x: 1, y: 2, atCurrentPosition: false)).summary,
+                       "Press left button at (1, 2)")
+        XCTAssertEqual(MacroAction.mouseUp(.init(button: .right)).summary, "Release right button at pointer")
     }
 
     func testKeyComboDisplay() {
@@ -197,6 +216,21 @@ final class RunnerTests: XCTestCase {
         let performer = FakePerformer()
         try await MacroRunner.run(macro, performer: performer, sleep: { _ in })
         XCTAssertEqual(performer.performed, [a, b, a, b, a, b])
+    }
+
+    func testSpeedScalesHoldsAndDrags() async throws {
+        let macro = Macro(name: "m", steps: [
+            MacroStep(action: .keyPress(.init(keyCode: 13, holdDuration: 2))),
+            MacroStep(action: .click(.init(holdDuration: 1))),
+            MacroStep(action: .drag(.init(duration: 0.5))),
+        ], speed: 2)
+        let performer = FakePerformer()
+        try await MacroRunner.run(macro, performer: performer, sleep: { _ in })
+        XCTAssertEqual(performer.performed, [
+            .keyPress(.init(keyCode: 13, holdDuration: 1)),
+            .click(.init(holdDuration: 0.5)),
+            .drag(.init(duration: 0.25)),
+        ])
     }
 
     func testSpeedScalesWaits() async throws {
@@ -367,6 +401,126 @@ final class RecordingBuilderTests: XCTestCase {
         XCTAssertEqual(builder.finish().map(\.action), [
             .scroll(.init(dx: 2, dy: -30)), .delay(.init(seconds: 2)), .scroll(.init(dx: 0, dy: 40)),
         ])
+    }
+
+    // MARK: Holds
+
+    private func up(_ code: UInt16, at time: Double) -> RecordedEvent {
+        .keyUp(keyCode: code, time: time)
+    }
+
+    func testHeldKeyKeepsItsHoldTime() {
+        var builder = RecordingBuilder()
+        builder.add(key(13, "w", at: 0))
+        // The system's auto-repeat while the key is held is not recorded as extra presses.
+        builder.add(.keyDown(keyCode: 13, modifiers: [], characters: "w", time: 0.5, isRepeat: true))
+        builder.add(.keyDown(keyCode: 13, modifiers: [], characters: "w", time: 0.55, isRepeat: true))
+        builder.add(up(13, at: 1.234))
+        XCTAssertEqual(builder.finish().map(\.action), [.keyPress(.init(keyCode: 13, holdDuration: 1.23))])
+    }
+
+    func testQuickPressesStayTyping() {
+        var builder = RecordingBuilder()
+        builder.add(key(4, "h", at: 0))
+        builder.add(up(4, at: 0.08))
+        builder.add(key(34, "i", at: 0.1))
+        builder.add(up(34, at: 0.2))
+        XCTAssertEqual(builder.finish().map(\.action), [.typeText(.init(text: "hi"))])
+    }
+
+    func testHeldKeyInsideTypingBecomesTimedPress() {
+        var builder = RecordingBuilder()
+        builder.add(key(4, "h", at: 0)); builder.add(up(4, at: 0.05))
+        builder.add(key(34, "i", at: 0.1)); builder.add(up(34, at: 0.15))
+        builder.add(key(13, "w", at: 0.3)); builder.add(up(13, at: 1.3))
+        builder.add(key(7, "x", at: 1.5)); builder.add(up(7, at: 1.55))
+        XCTAssertEqual(builder.finish().map(\.action), [
+            .typeText(.init(text: "hi")),
+            .delay(.init(seconds: 0.2)),
+            .keyPress(.init(keyCode: 13, holdDuration: 1)),
+            .delay(.init(seconds: 0.2)),
+            .typeText(.init(text: "x")),
+        ])
+    }
+
+    func testOverlappingHoldBecomesKeyDownAndUp() {
+        // Hold W for 2 s and tap Space in the middle (e.g. walking and jumping in a game).
+        var builder = RecordingBuilder()
+        builder.add(key(13, "w", at: 0))
+        builder.add(key(49, " ", at: 1.0))
+        builder.add(up(49, at: 1.05))
+        builder.add(up(13, at: 2.0))
+        XCTAssertEqual(builder.finish().map(\.action), [
+            .keyDown(.init(keyCode: 13)),
+            .delay(.init(seconds: 1)),
+            .keyPress(.init(keyCode: 49)),
+            .delay(.init(seconds: 1)),
+            .keyUp(.init(keyCode: 13)),
+        ])
+    }
+
+    func testTwoOverlappingHolds() {
+        var builder = RecordingBuilder(options: RecordingOptions(recordDelays: false))
+        builder.add(key(13, "w", at: 0))
+        builder.add(key(0, "a", at: 0.5))
+        builder.add(up(13, at: 1.0))
+        builder.add(up(0, at: 1.5))
+        XCTAssertEqual(builder.finish().map(\.action), [
+            .keyDown(.init(keyCode: 13)),
+            .keyDown(.init(keyCode: 0)),
+            .keyUp(.init(keyCode: 13)),
+            .keyUp(.init(keyCode: 0)),
+        ])
+    }
+
+    func testMouseHold() {
+        var builder = RecordingBuilder()
+        builder.add(.mouseDown(button: .left, x: 100, y: 100, clickCount: 1, modifiers: [], time: 0))
+        builder.add(.mouseUp(button: .left, x: 101, y: 100, time: 0.8))
+        XCTAssertEqual(builder.finish().map(\.action), [.click(.init(x: 100, y: 100, holdDuration: 0.8))])
+    }
+
+    func testMouseHoldWithInputDuringItBecomesDownAndUp() {
+        var builder = RecordingBuilder()
+        builder.add(.mouseDown(button: .left, x: 100, y: 100, clickCount: 1, modifiers: [], time: 0))
+        builder.add(key(8, "c", .command, at: 0.5))
+        builder.add(up(8, at: 0.55))
+        builder.add(.mouseUp(button: .left, x: 101, y: 100, time: 1.0))
+        XCTAssertEqual(builder.finish().map(\.action), [
+            .mouseDown(.init(x: 100, y: 100, button: .left, atCurrentPosition: false)),
+            .delay(.init(seconds: 0.5)),
+            .keyPress(.init(keyCode: 8, modifiers: .command)),
+            .delay(.init(seconds: 0.5)),
+            .mouseUp(.init(x: 101, y: 100, button: .left, atCurrentPosition: false)),
+        ])
+    }
+
+    func testKeyHeldDuringDragIsSplitAroundIt() {
+        // Hold Space and drag (e.g. panning a canvas).
+        var builder = RecordingBuilder(options: RecordingOptions(recordDelays: false))
+        builder.add(key(49, " ", at: 0))
+        builder.add(.mouseDown(button: .left, x: 0, y: 0, clickCount: 1, modifiers: [], time: 0.5))
+        builder.add(.mouseUp(button: .left, x: 300, y: 0, time: 1.0))
+        builder.add(up(49, at: 1.5))
+        XCTAssertEqual(builder.finish().map(\.action), [
+            .keyDown(.init(keyCode: 49)),
+            .drag(.init(fromX: 0, fromY: 0, toX: 300, toY: 0, duration: 0.5)),
+            .keyUp(.init(keyCode: 49)),
+        ])
+    }
+
+    func testHoldsCanBeTurnedOff() {
+        var builder = RecordingBuilder(options: RecordingOptions(recordHolds: false))
+        builder.add(key(13, "w", at: 0))
+        builder.add(up(13, at: 2))
+        XCTAssertEqual(builder.finish().map(\.action), [.typeText(.init(text: "w"))])
+    }
+
+    func testMinimumHoldIsConfigurable() {
+        var builder = RecordingBuilder(options: RecordingOptions(minimumHold: 1))
+        builder.add(key(36, "\r", at: 0))
+        builder.add(up(36, at: 0.6))
+        XCTAssertEqual(builder.finish().map(\.action), [.keyPress(.init(keyCode: 36))])
     }
 
     func testTypeableText() {

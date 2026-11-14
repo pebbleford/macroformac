@@ -6,15 +6,17 @@ Requires macOS 13 Ventura or later. Built with Swift and SwiftUI. No dependencie
 
 ## Features
 
-- **Record macros.** Click **Record**, use your Mac normally, then click **Stop** (or press ⌃⌥⌘.). Typing becomes "Type Text" steps, shortcuts become key presses, and clicks, double-clicks, drags, scrolls and pauses are captured too. Input aimed at MacroForMac itself is ignored.
-- **Build macros by hand** from 11 step types:
+- **Record macros.** Click **Record**, use your Mac normally, then click **Stop** (or press ⌃⌥⌘.). Typing becomes "Type Text" steps, shortcuts become key presses, and clicks, double-clicks, drags, scrolls and pauses are captured too. **How long you hold each key or mouse button is recorded** ("Press W · held 1.2 s"), and if you press other things while holding one, you get separate Key Down / Key Up steps so the timing plays back the same. Input aimed at MacroForMac itself is ignored.
+- **Build macros by hand** from 15 step types:
 
   | Step | What it does |
   | --- | --- |
   | Type Text | Types any text, including line breaks and emoji |
-  | Press Keys | Presses a key combo such as ⌘C, ⇧⌘4, ↩, F5 |
+  | Press Keys | Presses a key combo such as ⌘C, ⇧⌘4, ↩, F5, optionally holding it for a set time |
+  | Key Down / Key Up | Holds a key down until a later step releases it |
   | Wait | Pauses for a number of seconds |
-  | Click | Left, right or middle click; single, double or triple; at a position or wherever the pointer is; can hold ⌘/⌥/⌃/⇧ |
+  | Click | Left, right or middle click; single, double or triple; at a position or wherever the pointer is; can hold ⌘/⌥/⌃/⇧ and hold the button for a set time |
+  | Mouse Button Down / Up | Holds a mouse button down until a later step releases it (Move Mouse steps in between drag) |
   | Move Mouse | Moves the pointer |
   | Drag | Drags from one point to another |
   | Scroll | Scrolls vertically and/or horizontally |
@@ -25,7 +27,8 @@ Requires macOS 13 Ventura or later. Built with Swift and SwiftUI. No dependencie
 
 - **Global shortcuts.** Give any macro a shortcut and it runs from any app. Press it again to stop. ⌃⌥⌘. stops whatever is running (you can change this in Settings).
 - **Menu bar menu** to run any macro, start a recording, or stop playback.
-- **Repeat** a macro N times or loop it until stopped, and change its **speed** (0.25× to 10×).
+- **Repeat** a macro N times or loop it until stopped, and change its **speed** (0.25× to 10×, scaling waits and hold times).
+- Keys held during playback auto-repeat like a real keyboard, and anything still held when a macro ends or is stopped is released automatically.
 - **Edit freely:** reorder by dragging, duplicate, disable steps, use "Pick" to capture a screen position with the pointer.
 - **Import and export** macros as JSON files to back them up or share them.
 - Steps are highlighted live while a macro runs.
@@ -81,6 +84,7 @@ Tips:
 - Put a short **Wait** after **Open App** or **Open URL** steps so the app is ready before you type into it.
 - Clicks use absolute screen positions, measured from the top-left corner of the main display. Use **Pick** to capture a spot: hover over it and wait for the 3-second countdown to finish.
 - Recording records where you click, not how the pointer moves.
+- Presses shorter than 0.25 s are recorded as quick taps. Change this, or turn hold recording off, in Settings → Recording.
 - Shortcuts need ⌘, ⌃ or ⌥ (F-keys work alone), so they don't take over normal typing.
 
 ## Where your macros are stored

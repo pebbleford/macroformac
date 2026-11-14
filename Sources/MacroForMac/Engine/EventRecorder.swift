@@ -24,6 +24,8 @@ final class EventRecorder {
     var ignoredCombos: [KeyCombo] = []
     /// Called with the current number of steps whenever it changes.
     var onStepCountChange: ((Int) -> Void)?
+    private var lastReportedCount = 0
+    private var countUpdateScheduled = false
 
     init(options: RecordingOptions) {
         builder = RecordingBuilder(options: options)
@@ -33,7 +35,7 @@ final class EventRecorder {
         guard tap == nil else { return }
 
         let types: [CGEventType] = [
-            .keyDown, .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp,
+            .keyDown, .keyUp, .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp,
             .otherMouseDown, .otherMouseUp, .scrollWheel,
         ]
         let mask = types.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << CGEventMask($1.rawValue)) }
@@ -100,7 +102,6 @@ final class EventRecorder {
         }
 
         let time = ProcessInfo.processInfo.systemUptime
-        let before = builder.steps.count
 
         switch type {
         case .keyDown:
@@ -109,7 +110,14 @@ final class EventRecorder {
             let keyCode = UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode))
             let modifiers = KeyModifiers(cgFlags: event.flags).normalized(for: keyCode)
             if ignoredCombos.contains(KeyCombo(keyCode: keyCode, modifiers: modifiers)) { return }
-            builder.add(.keyDown(keyCode: keyCode, modifiers: modifiers, characters: characters(of: event), time: time))
+            let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+            builder.add(.keyDown(keyCode: keyCode, modifiers: modifiers, characters: characters(of: event),
+                                 time: time, isRepeat: isRepeat))
+
+        case .keyUp:
+            // Releases are always passed on; ones without a recorded press are ignored.
+            let keyCode = UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode))
+            builder.add(.keyUp(keyCode: keyCode, time: time))
 
         case .leftMouseDown, .rightMouseDown, .otherMouseDown:
             guard let button = mouseButton(type: type, event: event) else { return }
@@ -133,8 +141,22 @@ final class EventRecorder {
             return
         }
 
-        if builder.steps.count != before {
-            onStepCountChange?(builder.steps.count)
+        scheduleStepCountUpdate()
+    }
+
+    /// Rebuilding steps is cheap but not free, so the live count is refreshed a few times a second.
+    private func scheduleStepCountUpdate() {
+        guard !countUpdateScheduled else { return }
+        countUpdateScheduled = true
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard let self, self.tap != nil else { return }
+            self.countUpdateScheduled = false
+            let count = self.builder.steps.count
+            if count != self.lastReportedCount {
+                self.lastReportedCount = count
+                self.onStepCountChange?(count)
+            }
         }
     }
 

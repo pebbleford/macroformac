@@ -64,7 +64,7 @@ struct MacroDetailView: View {
                     }
                     .labelsHidden()
                     .fixedSize()
-                    .help("Scales all Wait steps")
+                    .help("Scales waits, hold times and drags")
                 }
             }
             .controlSize(.small)
@@ -205,9 +205,13 @@ struct MacroDetailView: View {
             Section("Keyboard") {
                 addButton(.typeText)
                 addButton(.keyPress)
+                addButton(.keyDown)
+                addButton(.keyUp)
             }
             Section("Mouse") {
                 addButton(.click)
+                addButton(.mouseDown)
+                addButton(.mouseUp)
                 addButton(.moveMouse)
                 addButton(.drag)
                 addButton(.scroll)
@@ -297,8 +301,8 @@ struct StepRow: View {
 
     private var tint: Color {
         switch step.action.kind {
-        case .typeText, .keyPress: return .blue
-        case .click, .moveMouse, .drag, .scroll: return .purple
+        case .typeText, .keyPress, .keyDown, .keyUp: return .blue
+        case .click, .mouseDown, .mouseUp, .moveMouse, .drag, .scroll: return .purple
         case .delay: return .orange
         case .openApp, .openURL: return .teal
         case .shell, .appleScript: return .pink

@@ -12,7 +12,7 @@ struct SettingsView: View {
             PermissionSettings()
                 .tabItem { Label("Permissions", systemImage: "lock.shield") }
         }
-        .frame(width: 520, height: 360)
+        .frame(width: 540, height: 440)
     }
 }
 
@@ -87,6 +87,15 @@ private struct RecordingSettings: View {
         Form {
             Toggle("Combine typed characters into “Type Text” steps", isOn: $app.settings.recording.mergeTypedText)
             Toggle("Record pauses as “Wait” steps", isOn: $app.settings.recording.recordDelays)
+            Toggle("Record how long keys and mouse buttons are held", isOn: $app.settings.recording.recordHolds)
+
+            if app.settings.recording.recordHolds {
+                LabeledContent("Count as a hold after") {
+                    Stepper(value: $app.settings.recording.minimumHold, in: 0.05...2, step: 0.05) {
+                        Text(String(format: "%.2f s", app.settings.recording.minimumHold)).monospacedDigit()
+                    }
+                }
+            }
 
             if app.settings.recording.recordDelays {
                 LabeledContent("Ignore pauses shorter than") {
@@ -104,7 +113,7 @@ private struct RecordingSettings: View {
                 }
             }
 
-            Text("While recording, clicks and typing inside MacroForMac itself are ignored. Mouse movement is not recorded — only where you click, drag and scroll.")
+            Text("Presses shorter than the hold time are recorded as quick taps. If you press other keys or buttons while holding one, the hold is recorded as separate Key Down / Key Up steps so the timing stays right. While recording, input inside MacroForMac itself is ignored, and mouse movement isn't recorded, only where you click, drag and scroll.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
