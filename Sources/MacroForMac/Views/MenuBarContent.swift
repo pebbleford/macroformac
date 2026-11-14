@@ -9,8 +9,8 @@ struct MenuBarContent: View {
 
     var body: some View {
         if app.isRecording {
-            Button("Stop Recording") { app.stopRecording(keep: true) }
-            Button("Cancel Recording") { app.stopRecording(keep: false) }
+            Button("Stop Recording") { app.stopRecording(keep: true, fromMenuBar: true) }
+            Button("Cancel Recording") { app.stopRecording(keep: false, fromMenuBar: true) }
             Divider()
         } else if let running = app.runningMacro {
             Button("Stop “\(running.name)”") { app.stopPlayback() }

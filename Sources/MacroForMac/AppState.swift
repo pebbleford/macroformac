@@ -329,9 +329,13 @@ final class AppState: ObservableObject {
     }
 
     /// Ends recording. With `keep` the captured steps are appended to the macro.
-    func stopRecording(keep: Bool) {
+    /// `fromMenuBar` drops the click on MacroForMac's menu bar icon that opened the menu.
+    func stopRecording(keep: Bool, fromMenuBar: Bool = false) {
         guard isRecording, let recorder else { return }
-        let steps = recorder.stop()
+        var steps = recorder.stop()
+        if fromMenuBar {
+            Self.dropTrailingMenuBarClick(&steps)
+        }
         self.recorder = nil
         isRecording = false
         recordingPanel?.close()
@@ -349,6 +353,16 @@ final class AppState: ObservableObject {
         recordedStepCount = 0
 
         showMainWindow()
+    }
+
+    private static func dropTrailingMenuBarClick(_ steps: inout [MacroStep]) {
+        guard let last = steps.last, case .click(let click) = last.action,
+              !click.atCurrentPosition, click.y <= 50
+        else { return }
+        steps.removeLast()
+        while let tail = steps.last, case .delay = tail.action {
+            steps.removeLast()
+        }
     }
 
     // MARK: Hotkeys
