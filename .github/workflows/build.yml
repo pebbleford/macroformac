@@ -37,26 +37,13 @@ jobs:
           fi
           LIB="$HOME/Library/Application Support/MacroForMac/macros.json"
           test -f "$LIB"
-          head -c 600 "$LIB"; echo
-          echo "::group::App log"
-          log show --last 1m --predicate 'process == "MacroForMac"' --style compact \
-            | grep -v -E 'Debug|libnetwork|CFNetwork' | tail -60 || true
-          echo "::endgroup::"
-          echo "UI_TREE_BEGIN"
-          perl -e 'alarm 40; exec @ARGV' osascript -e 'tell application "System Events" to tell process "MacroForMac" to get entire contents of window 1' > ui-tree.txt 2>&1 || echo "(osascript failed: $?)"
-          tr ',' '\n' < ui-tree.txt | grep -E 'static text|text field|row|outline|table|button' | head -120 || true
-          wc -c ui-tree.txt
-          echo "UI_TREE_END"
+          head -c 300 "$LIB"; echo
+          # Check the macro list and editor were built (via the accessibility tree).
+          perl -e 'alarm 40; exec @ARGV' osascript -e 'tell application "System Events" to tell process "MacroForMac" to get entire contents of window 1' \
+            | tr ',' '\n' | grep -E '^ ?static text' | sed -E 's/ of (UI element|group|window).*//' | head -40 || echo "(UI tree unavailable)"
           mkdir -p screenshots
-          sleep 5
           screencapture -x screenshots/main-window.png || true
           pkill -x MacroForMac || true
-          if [ -f screenshots/main-window.png ]; then
-            sips -s format jpeg -s formatOptions 45 -Z 1000 screenshots/main-window.png --out screenshots/preview.jpg > /dev/null
-            echo "SCREENSHOT_BASE64_BEGIN"
-            base64 -b 200 -i screenshots/preview.jpg
-            echo "SCREENSHOT_BASE64_END"
-          fi
 
       - uses: actions/upload-artifact@v4
         if: always()
