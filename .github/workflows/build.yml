@@ -44,6 +44,10 @@ jobs:
           mkdir -p screenshots
           screencapture -x screenshots/main-window.png || true
           pkill -x MacroForMac || true
+          # The in-app "Fix Permission" button runs these; make sure they work without admin rights.
+          for service in Accessibility PostEvent ListenEvent; do
+            /usr/bin/tccutil reset "$service" com.macroformac.MacroForMac
+          done
 
       - uses: actions/upload-artifact@v4
         if: always()
