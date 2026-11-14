@@ -129,6 +129,9 @@ private struct PermissionSettings: View {
             LabeledContent("Accessibility") {
                 HStack {
                     status(app.accessibilityGranted)
+                    if !app.accessibilityGranted {
+                        Button("Fix Permission") { app.fixAccessibility() }
+                    }
                     Button("Open Settings") { Permissions.openAccessibilitySettings() }
                 }
             }
@@ -153,9 +156,13 @@ private struct PermissionSettings: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Text("Rebuilt the app yourself? macOS ties permissions to the app's signature, so you may need to remove MacroForMac from the list with “–” and add it again.")
+            Text("Asked again after an update? macOS ties these permissions to one exact version of the app, so a new version can look switched on but not work. Fix Permission clears MacroForMac's old entry and adds this copy; then switch it on once.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            HStack {
+                Button("Fix Permission") { app.fixAccessibility() }
+                Button("Restart MacroForMac") { Permissions.relaunch() }
+            }
         }
         .formStyle(.grouped)
     }

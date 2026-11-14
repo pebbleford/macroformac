@@ -39,6 +39,8 @@ final class AppState: ObservableObject {
     @Published private(set) var hotkeyConflicts: Set<Macro.ID> = []
     @Published private(set) var stopHotkeyConflict = false
     @Published private(set) var accessibilityGranted = Permissions.accessibilityGranted
+    /// Access worked before but doesn't now: macOS dropped it, usually after an update.
+    @Published private(set) var accessibilityWasLost = false
 
     /// Set by the main window so other parts of the app can bring it back.
     var openMainWindowAction: (() -> Void)?
@@ -66,6 +68,7 @@ final class AppState: ObservableObject {
         settings = Self.loadSettings()
         loadMacros()
         registerHotkeysIfNeeded()
+        refreshPermissions()
         startPermissionPolling()
     }
 
@@ -192,12 +195,8 @@ final class AppState: ObservableObject {
             return
         }
         if macro.needsInputEvents && !Permissions.accessibilityGranted {
-            Permissions.requestAccessibility()
-            presentAlert(
-                "Accessibility access needed",
-                "To type and click for you, MacroForMac needs Accessibility access. Turn it on in System Settings → Privacy & Security → Accessibility, then run the macro again.",
-                action: .openAccessibility
-            )
+            refreshPermissions()
+            presentAccessibilityAlert(purpose: "type and click for you")
             return
         }
 
@@ -281,12 +280,8 @@ final class AppState: ObservableObject {
             return
         }
         guard Permissions.canRecord else {
-            Permissions.requestAccessibility()
-            presentAlert(
-                "Permission needed to record",
-                "To record your keyboard and mouse, MacroForMac needs Accessibility access (System Settings → Privacy & Security → Accessibility). Turn it on, then start recording again.",
-                action: .openAccessibility
-            )
+            refreshPermissions()
+            presentAccessibilityAlert(purpose: "record your keyboard and mouse")
             return
         }
 
@@ -298,8 +293,7 @@ final class AppState: ObservableObject {
         do {
             try recorder.start()
         } catch {
-            Permissions.requestInputMonitoring()
-            presentAlert("Couldn't start recording", error.localizedDescription, action: .openInputMonitoring)
+            presentAlert("Couldn't start recording", error.localizedDescription, action: .fixAccessibility)
             return
         }
 
@@ -489,21 +483,38 @@ final class AppState: ObservableObject {
     }
 
     enum AlertAction {
-        case openAccessibility
-        case openInputMonitoring
+        case fixAccessibility
 
         var title: String {
             switch self {
-            case .openAccessibility: return "Open Accessibility Settings"
-            case .openInputMonitoring: return "Open Input Monitoring Settings"
+            case .fixAccessibility: return "Fix Permission"
             }
         }
 
         func perform() {
             switch self {
-            case .openAccessibility: Permissions.openAccessibilitySettings()
-            case .openInputMonitoring: Permissions.openInputMonitoringSettings()
+            case .fixAccessibility:
+                Task { @MainActor in AppState.shared.fixAccessibility() }
             }
+        }
+    }
+
+    /// One clear message instead of stacking the system prompt on top of our own alert.
+    private func presentAccessibilityAlert(purpose: String) {
+        let message: String
+        if accessibilityWasLost {
+            message = "macOS turned off MacroForMac's access after it was updated. Each new version counts as a new app, even if the switch in System Settings still looks on.\n\nClick Fix Permission, then switch MacroForMac on in the list that opens."
+        } else {
+            message = "To \(purpose), MacroForMac needs Accessibility access.\n\nClick Fix Permission, then switch MacroForMac on in the list that opens. If it already looks on there, Fix Permission clears the old entry so macOS recognises this copy."
+        }
+        presentAlert("Turn on Accessibility for MacroForMac", message, action: .fixAccessibility)
+    }
+
+    /// Clears stale permission entries for MacroForMac and asks macOS again.
+    func fixAccessibility() {
+        Task {
+            await Permissions.resetAndRequestAccessibility()
+            refreshPermissions()
         }
     }
 
@@ -539,6 +550,9 @@ final class AppState: ObservableObject {
 
     func refreshPermissions() {
         let granted = Permissions.accessibilityGranted
+        if granted { Permissions.noteAccessibilityGranted() }
+        let lost = !granted && Permissions.accessibilityWasGrantedBefore
         if granted != accessibilityGranted { accessibilityGranted = granted }
+        if lost != accessibilityWasLost { accessibilityWasLost = lost }
     }
 }

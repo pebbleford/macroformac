@@ -70,7 +70,13 @@ macOS needs your permission before any app can type or click for you:
 2. **Automation** (only for AppleScript steps). macOS asks the first time a script controls another app.
 3. **Input Monitoring** (optional). Recording works with Accessibility alone. Input Monitoring lets the recorder use a lighter, listen-only event tap.
 
-> If you rebuild the app yourself, macOS may treat the new build as a different app. If macros stop working after a rebuild, remove MacroForMac from the Accessibility list with **–** and add it again.
+### Keeps asking for permission?
+
+macOS ties Accessibility permission to one exact version of the app. After you download an update (or rebuild), the switch for MacroForMac in System Settings can still look **on** while macOS treats the new copy as a different app, so it asks again.
+
+Click **Fix Permission** in MacroForMac's banner (or Settings → Permissions). It clears MacroForMac's old entry and adds the current copy. Then switch MacroForMac on in the list that opens. If it still doesn't take, click **Restart MacroForMac**.
+
+Also make sure you're running the app from your **Applications** folder, not straight from the download.
 
 ## Using it
 
