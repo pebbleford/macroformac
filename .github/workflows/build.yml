@@ -52,90 +52,19 @@ jobs:
       - name: UI click test
         run: |
           # Opened like a user would, without Accessibility permission (so the permission
-          # banner is showing). Clicks real screen positions: a macro in the sidebar, then the
-          # "Loop until stopped" checkbox, and checks that the change was saved.
+          # banner is showing). Real mouse clicks on a macro in the sidebar and on the
+          # "Loop until stopped" checkbox; fails unless the change is saved.
+          swiftc -O scripts/ci/click.swift -o /tmp/ci-click
+          find() { perl -e 'alarm 60; exec @ARGV' osascript scripts/ci/find.applescript "$@"; }
           open dist/MacroForMac.app
           sleep 8
-          perl -e 'alarm 150; exec @ARGV' osascript <<'OSA' || true
-          on allElements()
-          	tell application "System Events" to tell process "MacroForMac"
-          		set frontmost to true
-          		return entire contents of window 1
-          	end tell
-          end allElements
-          on textsOf(e)
-          	set t to ""
-          	tell application "System Events"
-          		try
-          			set t to t & " name=" & (name of e as text)
-          		end try
-          		try
-          			set t to t & " desc=" & (description of e as text)
-          		end try
-          		try
-          			set t to t & " value=" & (value of e as text)
-          		end try
-          	end tell
-          	return t
-          end textsOf
-          on findElement(theRole, theText)
-          	set els to allElements()
-          	repeat with e in els
-          		set e to contents of e
-          		tell application "System Events"
-          			set r to ""
-          			try
-          				set r to role of e
-          			end try
-          		end tell
-          		if r is theRole and (my textsOf(e)) contains theText then return e
-          	end repeat
-          	error "Not found: " & theRole & " " & theText
-          end findElement
-          on clickCenter(e)
-          	tell application "System Events"
-          		set p to position of e
-          		set s to size of e
-          	end tell
-          	set x to round ((item 1 of p) + (item 1 of s) / 2)
-          	set y to round ((item 2 of p) + (item 2 of s) / 2)
-          	tell application "System Events" to tell process "MacroForMac" to click at {x, y}
-          end clickCenter
-          on clickLeftEdge(e)
-          	tell application "System Events"
-          		set p to position of e
-          		set s to size of e
-          	end tell
-          	set x to round ((item 1 of p) + 8)
-          	set y to round ((item 2 of p) + (item 2 of s) / 2)
-          	tell application "System Events" to tell process "MacroForMac" to click at {x, y}
-          end clickLeftEdge
-          set report to ""
-          try
-          	clickCenter(findElement("AXStaticText", "Example: Select All & Copy"))
-          	set report to report & "clicked macro row. "
-          on error m
-          	set report to report & "macro row: " & m & ". "
-          end try
-          delay 1.5
-          try
-          	clickLeftEdge(findElement("AXCheckBox", "Loop until stopped"))
-          	set report to report & "clicked Loop checkbox. "
-          on error m
-          	set report to report & "Loop checkbox: " & m & ". Checkboxes:"
-          	repeat with e in allElements()
-          		set e to contents of e
-          		tell application "System Events"
-          			set r to ""
-          			try
-          				set r to role of e
-          			end try
-          		end tell
-          		if r is "AXCheckBox" then set report to report & " [" & (my textsOf(e)) & "]"
-          	end repeat
-          end try
-          return report
-          OSA
+          xy=$(find AXStaticText "Example: Select All & Copy")
+          echo "Clicking macro row at $xy"
+          /tmp/ci-click $xy
+          sleep 1.5
+          xy=$(find AXCheckBox)
+          echo "Clicking Loop checkbox at $xy"
+          /tmp/ci-click $xy
           sleep 1.5
           mkdir -p screenshots
           screencapture -x screenshots/after-clicks.png || true
