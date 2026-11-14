@@ -66,7 +66,7 @@ jobs:
           echo "Clicking Loop checkbox at $xy"
           /tmp/ci-input click $xy
           sleep 1
-          xy=$(find AXButton "None")
+          xy=$(find AXButton "" "Shortcut")
           echo "Clicking Shortcut button at $xy, then pressing ⌃⌥1"
           /tmp/ci-input click $xy
           sleep 1

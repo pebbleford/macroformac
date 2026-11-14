@@ -1,39 +1,77 @@
--- CI helper: prints the centre "x y" of the first MacroForMac UI element with the given
--- accessibility role whose value or name contains the given text (text optional).
---   osascript scripts/ci/find.applescript AXCheckBox
---   osascript scripts/ci/find.applescript AXStaticText "Example: Select All & Copy"
+-- CI helper: prints the centre "x y" of a MacroForMac UI element.
+--   osascript find.applescript AXCheckBox                          -- first element with this role
+--   osascript find.applescript AXStaticText "Example: Select All"  -- role + text in its value/name
+--   osascript find.applescript AXButton "" "Shortcut"              -- role, on the same row as a label
 on run argv
 	set theRole to item 1 of argv
 	set theText to ""
+	set rowLabel to ""
 	if (count of argv) > 1 then set theText to item 2 of argv
+	if (count of argv) > 2 then set rowLabel to item 3 of argv
+
 	tell application "System Events" to tell process "MacroForMac"
 		set frontmost to true
 		set els to entire contents of window 1
 	end tell
+
+	set rowY to missing value
+	set rowX to missing value
+	if rowLabel is not "" then
+		repeat with e in els
+			set e to contents of e
+			if my roleOf(e) is "AXStaticText" and my textOf(e) is rowLabel then
+				set c to my centreOf(e)
+				set rowX to item 1 of c
+				set rowY to item 2 of c
+				exit repeat
+			end if
+		end repeat
+		if rowY is missing value then error "Label not found: " & rowLabel
+	end if
+
 	repeat with e in els
 		set e to contents of e
-		set r to ""
-		set t to ""
-		tell application "System Events"
-			try
-				set r to role of e
-			end try
-			try
-				set t to t & (value of e as text)
-			end try
-			try
-				set t to t & (name of e as text)
-			end try
-		end tell
-		if r is theRole and (theText is "" or t contains theText) then
-			tell application "System Events"
-				set p to position of e
-				set s to size of e
-			end tell
-			set x to round ((item 1 of p) + (item 1 of s) / 2)
-			set y to round ((item 2 of p) + (item 2 of s) / 2)
-			return (x as text) & " " & (y as text)
+		if my roleOf(e) is theRole and (theText is "" or my textOf(e) contains theText) then
+			set c to my centreOf(e)
+			if rowY is missing value then return my format(c)
+			if (item 1 of c) > rowX and ((item 2 of c) - rowY) < 10 and (rowY - (item 2 of c)) < 10 then
+				return my format(c)
+			end if
 		end if
 	end repeat
-	error "Not found: " & theRole & " " & theText
+	error "Not found: " & theRole & " " & theText & " " & rowLabel
 end run
+
+on roleOf(e)
+	tell application "System Events"
+		try
+			return role of e
+		end try
+	end tell
+	return ""
+end roleOf
+
+on textOf(e)
+	set t to ""
+	tell application "System Events"
+		try
+			set t to t & (value of e as text)
+		end try
+		try
+			set t to t & (name of e as text)
+		end try
+	end tell
+	return t
+end textOf
+
+on centreOf(e)
+	tell application "System Events"
+		set p to position of e
+		set s to size of e
+	end tell
+	return {round ((item 1 of p) + (item 1 of s) / 2), round ((item 2 of p) + (item 2 of s) / 2)}
+end centreOf
+
+on format(c)
+	return ((item 1 of c) as text) & " " & ((item 2 of c) as text)
+end format
