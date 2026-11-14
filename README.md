@@ -117,8 +117,9 @@ Sources/
     Engine/               CGEvent playback, CGEvent-tap recorder, Carbon hotkeys, permissions
     Views/                SwiftUI interface
 Tests/MacroCoreTests/   Unit tests for MacroCore
-Support/Info.plist      App bundle metadata
+Support/                Info.plist and AppIcon.icns
 scripts/build-app.sh    Builds and ad-hoc signs dist/MacroForMac.app
+scripts/make-icon.py    Regenerates the app icon (Pillow)
 ```
 
 ## Limitations
