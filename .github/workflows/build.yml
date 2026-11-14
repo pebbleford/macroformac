@@ -59,7 +59,8 @@ jobs:
           perl -e 'alarm 120; exec @ARGV' osascript <<'OSA'
           on findElement(theRole, theText)
           	tell application "System Events" to tell process "MacroForMac"
-          		repeat with e in (entire contents of window 1)
+          		set allElements to entire contents of window 1
+          		repeat with e in allElements
           			set matched to false
           			try
           				if value of e is theText then set matched to true
@@ -72,7 +73,7 @@ jobs:
           			end try
           		end repeat
           	end tell
-          	error "Not found: " & theText
+          	error "Not found: " & theText & " (searched " & (count of allElements) & " elements)"
           end findElement
           on clickCenter(e)
           	tell application "System Events"
