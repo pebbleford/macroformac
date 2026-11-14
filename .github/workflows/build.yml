@@ -1,0 +1,35 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: swift --version
+
+      - name: Test
+        run: swift test
+
+      - name: Build universal app
+        run: UNIVERSAL=1 VERSION="1.0.${{ github.run_number }}" BUILD_NUMBER="${{ github.run_number }}" ./scripts/build-app.sh
+
+      - name: Check binary
+        run: |
+          file dist/MacroForMac.app/Contents/MacOS/MacroForMac
+          plutil -lint dist/MacroForMac.app/Contents/Info.plist
+
+      - name: Zip
+        run: ditto -c -k --sequesterRsrc --keepParent dist/MacroForMac.app dist/MacroForMac.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MacroForMac
+          path: dist/MacroForMac.zip
+          if-no-files-found: error
