@@ -56,12 +56,14 @@ on textOf(e)
 	tell application "System Events"
 		try
 			set v to value of e
-			if v is not missing value then set t to t & (v as text)
+			if v is not missing value then set t to (v as text)
 		end try
-		try
-			set n to name of e
-			if n is not missing value then set t to t & (n as text)
-		end try
+		if t is "" then
+			try
+				set n to name of e
+				if n is not missing value then set t to (n as text)
+			end try
+		end if
 	end tell
 	return t
 end textOf
