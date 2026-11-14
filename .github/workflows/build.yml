@@ -43,8 +43,9 @@ jobs:
             | grep -v -E 'Debug|libnetwork|CFNetwork' | tail -60 || true
           echo "::endgroup::"
           echo "UI_TREE_BEGIN"
-          timeout 30 osascript -e 'tell application "System Events" to tell process "MacroForMac" to get entire contents of window 1' \
-            | tr ',' '\n' | grep -E 'static text|text field|row|button|checkbox' | head -80 || echo "(no UI tree: $?)"
+          perl -e 'alarm 40; exec @ARGV' osascript -e 'tell application "System Events" to tell process "MacroForMac" to get entire contents of window 1' > ui-tree.txt 2>&1 || echo "(osascript failed: $?)"
+          tr ',' '\n' < ui-tree.txt | grep -E 'static text|text field|row|outline|table|button' | head -120 || true
+          wc -c ui-tree.txt
           echo "UI_TREE_END"
           mkdir -p screenshots
           sleep 5
