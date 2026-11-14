@@ -38,11 +38,20 @@ jobs:
           LIB="$HOME/Library/Application Support/MacroForMac/macros.json"
           test -f "$LIB"
           head -c 600 "$LIB"; echo
+          echo "::group::App log"
+          log show --last 1m --predicate 'process == "MacroForMac"' --style compact \
+            | grep -v -E 'Debug|libnetwork|CFNetwork' | tail -60 || true
+          echo "::endgroup::"
+          echo "UI_TREE_BEGIN"
+          timeout 30 osascript -e 'tell application "System Events" to tell process "MacroForMac" to get entire contents of window 1' \
+            | tr ',' '\n' | grep -E 'static text|text field|row|button|checkbox' | head -80 || echo "(no UI tree: $?)"
+          echo "UI_TREE_END"
           mkdir -p screenshots
+          sleep 5
           screencapture -x screenshots/main-window.png || true
           pkill -x MacroForMac || true
           if [ -f screenshots/main-window.png ]; then
-            sips -s format jpeg -s formatOptions 55 -Z 1100 screenshots/main-window.png --out screenshots/preview.jpg > /dev/null
+            sips -s format jpeg -s formatOptions 45 -Z 1000 screenshots/main-window.png --out screenshots/preview.jpg > /dev/null
             echo "SCREENSHOT_BASE64_BEGIN"
             base64 -b 200 -i screenshots/preview.jpg
             echo "SCREENSHOT_BASE64_END"
