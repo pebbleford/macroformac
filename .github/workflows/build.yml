@@ -41,6 +41,12 @@ jobs:
           mkdir -p screenshots
           screencapture -x screenshots/main-window.png || true
           pkill -x MacroForMac || true
+          if [ -f screenshots/main-window.png ]; then
+            sips -s format jpeg -s formatOptions 55 -Z 1100 screenshots/main-window.png --out screenshots/preview.jpg > /dev/null
+            echo "SCREENSHOT_BASE64_BEGIN"
+            base64 -b 200 -i screenshots/preview.jpg
+            echo "SCREENSHOT_BASE64_END"
+          fi
 
       - uses: actions/upload-artifact@v4
         if: always()
