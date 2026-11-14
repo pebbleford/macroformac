@@ -7,9 +7,6 @@ struct PermissionBanner: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            if UIProbe.variant == 5 {
-                EmptyView()
-            } else {
             if Permissions.isTranslocated {
                 notice(
                     symbol: "folder.badge.questionmark",
@@ -39,9 +36,7 @@ struct PermissionBanner: View {
                         .help("Quit and reopen, in case macOS only applies the change after a restart")
                 }
             }
-            }
         }
-        .padding([.horizontal, .top], Permissions.isTranslocated || !app.accessibilityGranted ? 12 : 0)
     }
 
     private func notice<Buttons: View>(
@@ -60,7 +55,7 @@ struct PermissionBanner: View {
                 Text(message)
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(4)
                 HStack {
                     buttons()
                 }
@@ -68,7 +63,10 @@ struct PermissionBanner: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(12)
-        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+        .padding(14)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .background(Color.orange.opacity(0.15), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.orange.opacity(0.35)))
+        .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
     }
 }

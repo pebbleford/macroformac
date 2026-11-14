@@ -6,60 +6,6 @@ struct MacroListView: View {
     @EnvironmentObject private var app: AppState
 
     var body: some View {
-        listBody
-        .onDeleteCommand {
-            if let id = app.selectedMacroID { app.deleteMacro(id) }
-        }
-        .applyIf(UIProbe.variant != 4) {
-            $0.toolbar {
-                ToolbarItem {
-                    Button {
-                        app.addMacro()
-                    } label: {
-                        Label("New Macro", systemImage: "plus")
-                    }
-                    .help("New macro (⌘N)")
-                }
-            }
-        }
-        .safeAreaInset(edge: .bottom) {
-            HStack {
-                Text("\(app.macros.count) macro\(app.macros.count == 1 ? "" : "s")")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-        }
-    }
-
-    @ViewBuilder
-    private var listBody: some View {
-        if UIProbe.variant == 2 {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(app.macros) { macro in
-                        MacroRow(
-                            macro: macro,
-                            isRunning: app.runningMacroID == macro.id,
-                            isRecording: app.recordingMacroID == macro.id,
-                            hasConflict: app.hotkeyConflicts.contains(macro.id)
-                        )
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(app.selectedMacroID == macro.id ? Color.accentColor.opacity(0.25) : Color.clear)
-                        )
-                        .contentShape(Rectangle())
-                        .onTapGesture { app.selectedMacroID = macro.id }
-                        .contextMenu { contextMenu(for: macro) }
-                    }
-                }
-                .padding(8)
-            }
-        } else {
         List(selection: $app.selectedMacroID) {
             ForEach(app.macros) { macro in
                 MacroRow(
@@ -75,6 +21,28 @@ struct MacroListView: View {
             }
         }
         .listStyle(.sidebar)
+        .onDeleteCommand {
+            if let id = app.selectedMacroID { app.deleteMacro(id) }
+        }
+        .toolbar {
+            ToolbarItem {
+                Button {
+                    app.addMacro()
+                } label: {
+                    Label("New Macro", systemImage: "plus")
+                }
+                .help("New macro (⌘N)")
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            HStack {
+                Text("\(app.macros.count) macro\(app.macros.count == 1 ? "" : "s")")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
         }
     }
 
