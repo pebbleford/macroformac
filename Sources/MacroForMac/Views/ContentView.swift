@@ -8,10 +8,41 @@ struct ContentView: View {
     @State private var columnVisibility = NavigationSplitViewVisibility.all
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            MacroListView()
-                .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 360)
-        } content: {
+        layout
+        .frame(minWidth: 940, minHeight: 540)
+        .onChange(of: app.selectedMacroID) { _ in
+            selectedStepID = nil
+        }
+        .onAppear {
+            app.openMainWindowAction = { openWindow(id: "main") }
+            app.refreshPermissions()
+        }
+    }
+
+    @ViewBuilder
+    private var layout: some View {
+        if UIProbe.variant == 3 {
+            HStack(spacing: 0) {
+                MacroListView().frame(width: 240)
+                Divider()
+                contentColumn.frame(minWidth: 380)
+                Divider()
+                detailColumn.frame(minWidth: 280)
+            }
+        } else {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
+                MacroListView()
+                    .applyIf(UIProbe.variant != 1) { $0.navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 360) }
+            } content: {
+                contentColumn
+                    .applyIf(UIProbe.variant != 1) { $0.navigationSplitViewColumnWidth(min: 380, ideal: 460) }
+            } detail: {
+                detailColumn
+            }
+        }
+    }
+
+    private var contentColumn: some View {
             Group {
                 if let id = app.selectedMacroID, app.macros[id: id] != nil {
                     MacroDetailView(
@@ -23,8 +54,10 @@ struct ContentView: View {
                     EmptyLibraryView()
                 }
             }
-            .navigationSplitViewColumnWidth(min: 380, ideal: 460)
-        } detail: {
+    }
+
+    @ViewBuilder
+    private var detailColumn: some View {
             if let macroID = app.selectedMacroID,
                let stepID = selectedStepID,
                app.macros[id: macroID]?.steps[id: stepID] != nil {
@@ -43,14 +76,21 @@ struct ContentView: View {
                     message: "Select a step to edit it, or use + to add one."
                 )
             }
-        }
-        .frame(minWidth: 940, minHeight: 540)
-        .onChange(of: app.selectedMacroID) { _ in
-            selectedStepID = nil
-        }
-        .onAppear {
-            app.openMainWindowAction = { openWindow(id: "main") }
-            app.refreshPermissions()
+    }
+}
+
+/// TEMPORARY layout experiments, chosen with the MACROFORMAC_UI_PROBE environment variable (CI only).
+enum UIProbe {
+    static let variant = ProcessInfo.processInfo.environment["MACROFORMAC_UI_PROBE"].flatMap { Int($0) } ?? 0
+}
+
+extension View {
+    @ViewBuilder
+    func applyIf<Modified: View>(_ condition: Bool, _ transform: (Self) -> Modified) -> some View {
+        if condition {
+            transform(self)
+        } else {
+            self
         }
     }
 }

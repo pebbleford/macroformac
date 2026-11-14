@@ -21,7 +21,7 @@ struct MacroDetailView: View {
             }
         }
         .navigationTitle(macro.name.isEmpty ? "Untitled Macro" : macro.name)
-        .toolbar { toolbar }
+        .applyIf(UIProbe.variant != 4) { $0.toolbar { toolbar } }
     }
 
     // MARK: Header
@@ -109,7 +109,23 @@ struct MacroDetailView: View {
 
     // MARK: Steps
 
+    @ViewBuilder
     private var stepList: some View {
+        if UIProbe.variant == 2 {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(macro.steps.enumerated()), id: \.element.id) { index, step in
+                        StepRow(number: index + 1, step: step, isCurrent: app.currentStepID == step.id)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(selectedStepID == step.id ? Color.accentColor.opacity(0.25) : Color.clear)
+                            .contentShape(Rectangle())
+                            .onTapGesture { selectedStepID = step.id }
+                            .contextMenu { stepMenu(step) }
+                    }
+                }
+            }
+        } else {
         List(selection: $selectedStepID) {
             ForEach(Array(macro.steps.enumerated()), id: \.element.id) { index, step in
                 StepRow(number: index + 1, step: step, isCurrent: app.currentStepID == step.id)
@@ -120,6 +136,7 @@ struct MacroDetailView: View {
             }
         }
         .onDeleteCommand(perform: deleteSelectedStep)
+        }
     }
 
     @ViewBuilder
