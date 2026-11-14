@@ -51,40 +51,40 @@ jobs:
 
       - name: UI probes (temporary)
         run: |
-          BIN=dist/MacroForMac.app/Contents/MacOS/MacroForMac
+          APP=dist/MacroForMac.app
+          BIN=$APP/Contents/MacOS/MacroForMac
           mkdir -p screenshots
-          for v in 0 1 2 3 4; do
-            MACROFORMAC_UI_PROBE=$v "$BIN" > "screenshots/stderr-$v.txt" 2>&1 &
-            PID=$!
-            sleep 7
-            if [ "$v" = 0 ]; then
-              echo "AX_FRAMES_BEGIN"
-              perl -e 'alarm 30; exec @ARGV' osascript \
-                -e "set AppleScript's text item delimiters to \",\"" \
-                -e 'tell application "System Events" to tell process "MacroForMac"' \
-                -e 'set out to "window: " & ((position of window 1) as text) & " / " & ((size of window 1) as text) & linefeed' \
-                -e 'repeat with e in (UI elements of splitter group 1 of group 1 of window 1)' \
-                -e 'set out to out & (role of e) & ": " & ((position of e) as text) & " / " & ((size of e) as text) & linefeed' \
-                -e 'end repeat' \
-                -e 'try' \
-                -e 'set r to row 1 of outline 1 of scroll area 1 of group 1 of splitter group 1 of group 1 of window 1' \
-                -e 'set out to out & "sidebar row 1: " & ((position of r) as text) & " / " & ((size of r) as text) & linefeed' \
-                -e 'end try' \
-                -e 'return out' \
-                -e 'end tell' || echo "(AX query failed)"
-              echo "AX_FRAMES_END"
+          shoot() {
+            local name=$1
+            sleep 8
+            local pid
+            pid=$(pgrep -x MacroForMac | head -1)
+            echo "INFO_${name}: pid=$pid cpu=$(ps -o %cpu= -p "$pid" 2>/dev/null) trusted-banner=$(perl -e 'alarm 20; exec @ARGV' osascript -e 'tell application "System Events" to tell process "MacroForMac" to get value of static texts of group 2 of splitter group 1 of group 1 of window 1' 2>/dev/null | grep -c Accessibility)"
+            if [ "$name" = open0 ]; then
+              sample "$pid" 2 -mayDie > screenshots/sample.txt 2>/dev/null || true
+              echo "SAMPLE_BEGIN"
+              grep -A 40 "Thread_.*DispatchQueue_1: com.apple.main-thread" screenshots/sample.txt | head -45 || true
+              echo "SAMPLE_END"
             fi
-            screencapture -x "screenshots/probe-$v.png" || true
-            kill $PID 2>/dev/null || true
-            wait $PID 2>/dev/null || true
-            sips -s format jpeg -s formatOptions 40 -Z 760 "screenshots/probe-$v.png" --out "screenshots/probe-$v.jpg" > /dev/null
-            echo "PROBE_${v}_BEGIN"
-            base64 -b 200 -i "screenshots/probe-$v.jpg"
-            echo "PROBE_${v}_END"
-            echo "STDERR_${v}_BEGIN"
-            grep -v -E '^\s*$' "screenshots/stderr-$v.txt" | head -40 || true
-            echo "STDERR_${v}_END"
+            screencapture -x "screenshots/$name.png" || true
+            pkill -x MacroForMac || true
+            sleep 2
+            sips -s format jpeg -s formatOptions 40 -Z 760 "screenshots/$name.png" --out "screenshots/$name.jpg" > /dev/null
+            echo "PROBE_${name}_BEGIN"
+            base64 -b 200 -i "screenshots/$name.jpg"
+            echo "PROBE_${name}_END"
+          }
+          # Launched like a user would (Finder / LaunchServices).
+          for v in 0 2 3 5; do
+            defaults write com.macroformac.MacroForMac MacroForMacUIProbe -int $v
+            open "$APP"
+            shoot "open$v"
           done
+          # Launched directly from the executable (inherits the runner's permissions).
+          defaults write com.macroformac.MacroForMac MacroForMacUIProbe -int 0
+          "$BIN" > /dev/null 2>&1 &
+          shoot direct0
+          defaults delete com.macroformac.MacroForMac MacroForMacUIProbe || true
 
       - uses: actions/upload-artifact@v4
         if: always()

@@ -7,6 +7,9 @@ struct PermissionBanner: View {
 
     var body: some View {
         VStack(spacing: 8) {
+            if UIProbe.variant == 5 {
+                EmptyView()
+            } else {
             if Permissions.isTranslocated {
                 notice(
                     symbol: "folder.badge.questionmark",
@@ -35,6 +38,7 @@ struct PermissionBanner: View {
                     Button("Restart MacroForMac") { Permissions.relaunch() }
                         .help("Quit and reopen, in case macOS only applies the change after a restart")
                 }
+            }
             }
         }
         .padding([.horizontal, .top], Permissions.isTranslocated || !app.accessibilityGranted ? 12 : 0)

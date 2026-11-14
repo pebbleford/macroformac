@@ -81,7 +81,8 @@ struct ContentView: View {
 
 /// TEMPORARY layout experiments, chosen with the MACROFORMAC_UI_PROBE environment variable (CI only).
 enum UIProbe {
-    static let variant = ProcessInfo.processInfo.environment["MACROFORMAC_UI_PROBE"].flatMap { Int($0) } ?? 0
+    static let variant = ProcessInfo.processInfo.environment["MACROFORMAC_UI_PROBE"].flatMap { Int($0) }
+        ?? UserDefaults.standard.integer(forKey: "MacroForMacUIProbe")
 }
 
 extension View {
