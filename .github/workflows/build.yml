@@ -52,34 +52,41 @@ jobs:
       - name: UI click test
         run: |
           # Opened like a user would, without Accessibility permission (so the permission
-          # banner is showing). Real mouse clicks on a macro in the sidebar and on the
-          # "Loop until stopped" checkbox; fails unless the change is saved.
-          swiftc -O scripts/ci/click.swift -o /tmp/ci-click
+          # banner is showing). Real mouse clicks and key presses: select a macro in the
+          # sidebar, tick "Loop until stopped", record the shortcut ⌃⌥1. Fails unless saved.
+          swiftc -O scripts/ci/input.swift -o /tmp/ci-input
           find() { perl -e 'alarm 60; exec @ARGV' osascript scripts/ci/find.applescript "$@"; }
           open dist/MacroForMac.app
           sleep 8
           xy=$(find AXStaticText "Example: Select All & Copy")
           echo "Clicking macro row at $xy"
-          /tmp/ci-click $xy
+          /tmp/ci-input click $xy
           sleep 1.5
           xy=$(find AXCheckBox)
           echo "Clicking Loop checkbox at $xy"
-          /tmp/ci-click $xy
+          /tmp/ci-input click $xy
+          sleep 1
+          xy=$(find AXButton "None")
+          echo "Clicking Shortcut button at $xy, then pressing ⌃⌥1"
+          /tmp/ci-input click $xy
+          sleep 1
+          /tmp/ci-input key 18 control option
           sleep 1.5
           mkdir -p screenshots
           screencapture -x screenshots/after-clicks.png || true
           pkill -x MacroForMac || true
           sleep 1
-          sips -s format jpeg -s formatOptions 40 -Z 760 screenshots/after-clicks.png --out screenshots/after-clicks.jpg > /dev/null || true
-          echo "PROBE_after_BEGIN"
-          base64 -b 200 -i screenshots/after-clicks.jpg || true
-          echo "PROBE_after_END"
           python3 - "$HOME/Library/Application Support/MacroForMac/macros.json" <<'PY'
           import json, sys
           macros = json.load(open(sys.argv[1]))["macros"]
           macro = next(m for m in macros if m["name"] == "Example: Select All & Copy")
-          print("Select All & Copy repeatCount:", macro["repeatCount"])
-          sys.exit(0 if macro["repeatCount"] == 0 else "Clicking the sidebar / Loop checkbox did not work")
+          print("repeatCount:", macro["repeatCount"], "hotkey:", macro.get("hotkey"))
+          problems = []
+          if macro["repeatCount"] != 0:
+              problems.append("selecting the macro / ticking Loop did not work")
+          if macro.get("hotkey") != {"keyCode": 18, "modifiers": 3}:
+              problems.append("recording the shortcut did not work")
+          sys.exit("; ".join(problems) if problems else 0)
           PY
 
       - uses: actions/upload-artifact@v4
