@@ -25,6 +25,30 @@ jobs:
           file dist/MacroForMac.app/Contents/MacOS/MacroForMac
           plutil -lint dist/MacroForMac.app/Contents/Info.plist
 
+      - name: Launch smoke test
+        run: |
+          open dist/MacroForMac.app
+          sleep 10
+          if ! pgrep -x MacroForMac > /dev/null; then
+            echo "MacroForMac is not running after launch"
+            log show --last 2m --predicate 'process == "MacroForMac"' --style compact | tail -50 || true
+            ls ~/Library/Logs/DiagnosticReports/ 2>/dev/null | grep -i macro && cat ~/Library/Logs/DiagnosticReports/MacroForMac* | head -80
+            exit 1
+          fi
+          LIB="$HOME/Library/Application Support/MacroForMac/macros.json"
+          test -f "$LIB"
+          head -c 600 "$LIB"; echo
+          mkdir -p screenshots
+          screencapture -x screenshots/main-window.png || true
+          pkill -x MacroForMac || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: screenshots
+          if-no-files-found: ignore
+
       - name: Zip
         run: ditto -c -k --sequesterRsrc --keepParent dist/MacroForMac.app dist/MacroForMac.zip
 

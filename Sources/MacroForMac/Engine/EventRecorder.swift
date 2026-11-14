@@ -38,16 +38,6 @@ final class EventRecorder {
         ]
         let mask = types.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << CGEventMask($1.rawValue)) }
 
-        let callback: CGEventTapCallBack = { _, type, event, userInfo in
-            if let userInfo {
-                let recorder = Unmanaged<EventRecorder>.fromOpaque(userInfo).takeUnretainedValue()
-                MainActor.assumeIsolated {
-                    recorder.handle(type: type, event: event)
-                }
-            }
-            return Unmanaged.passUnretained(event)
-        }
-
         // A listen-only tap needs Input Monitoring; an (unmodifying) active tap works with Accessibility.
         let options: CGEventTapOptions = Permissions.inputMonitoringGranted ? .listenOnly : .defaultTap
         guard let tap = CGEvent.tapCreate(
@@ -55,7 +45,7 @@ final class EventRecorder {
             place: .headInsertEventTap,
             options: options,
             eventsOfInterest: mask,
-            callback: callback,
+            callback: recorderTapCallback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
             throw RecorderError.tapUnavailable
@@ -100,7 +90,7 @@ final class EventRecorder {
         return builder.finish()
     }
 
-    private func handle(type: CGEventType, event: CGEvent) {
+    fileprivate func handle(type: CGEventType, event: CGEvent) {
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
@@ -175,4 +165,20 @@ final class EventRecorder {
         let number = NSWindow.windowNumber(at: point, belowWindowWithWindowNumber: 0)
         return NSApp.windows.contains { $0.windowNumber == number }
     }
+}
+
+/// C callback for the event tap. The tap's run loop source is on the main run loop.
+private func recorderTapCallback(
+    proxy: CGEventTapProxy,
+    type: CGEventType,
+    event: CGEvent,
+    userInfo: UnsafeMutableRawPointer?
+) -> Unmanaged<CGEvent>? {
+    if let userInfo {
+        let recorder = Unmanaged<EventRecorder>.fromOpaque(userInfo).takeUnretainedValue()
+        MainActor.assumeIsolated {
+            recorder.handle(type: type, event: event)
+        }
+    }
+    return Unmanaged.passUnretained(event)
 }

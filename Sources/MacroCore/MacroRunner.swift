@@ -29,7 +29,7 @@ public enum MacroRunner {
     public static func run(
         _ macro: Macro,
         performer: MacroPerformer,
-        sleep: @escaping @Sendable (Double) async throws -> Void = MacroRunner.defaultSleep,
+        sleep: @escaping @Sendable (Double) async throws -> Void = { try await MacroRunner.defaultSleep($0) },
         onStep: @escaping @Sendable (RunProgress) -> Void = { _ in }
     ) async throws {
         let speed = macro.speed > 0 ? macro.speed : 1

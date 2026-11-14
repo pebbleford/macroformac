@@ -164,10 +164,13 @@ private final class FakePerformer: MacroPerformer, @unchecked Sendable {
         return _performed
     }
 
-    func perform(_ action: MacroAction) async throws {
-        lock.lock()
+    private func record(_ action: MacroAction) {
+        lock.lock(); defer { lock.unlock() }
         _performed.append(action)
-        lock.unlock()
+    }
+
+    func perform(_ action: MacroAction) async throws {
+        record(action)
         onPerform?()
         if action.kind == failOn { throw NSError(domain: "test", code: 1) }
         await Task.yield()

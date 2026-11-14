@@ -17,26 +17,7 @@ final class HotkeyCenter {
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         let status = InstallEventHandler(
             GetApplicationEventTarget(),
-            { _, event, userData in
-                guard let event, let userData else { return OSStatus(eventNotHandledErr) }
-                var hotKeyID = EventHotKeyID()
-                let status = GetEventParameter(
-                    event,
-                    EventParamName(kEventParamDirectObject),
-                    EventParamType(typeEventHotKeyID),
-                    nil,
-                    MemoryLayout<EventHotKeyID>.size,
-                    nil,
-                    &hotKeyID
-                )
-                guard status == noErr else { return status }
-                let center = Unmanaged<HotkeyCenter>.fromOpaque(userData).takeUnretainedValue()
-                let id = hotKeyID.id
-                MainActor.assumeIsolated {
-                    center.fire(id: id)
-                }
-                return noErr
-            },
+            hotKeyEventHandler,
             1,
             &spec,
             Unmanaged.passUnretained(self).toOpaque(),
@@ -76,7 +57,33 @@ final class HotkeyCenter {
         handlers.removeAll()
     }
 
-    private func fire(id: UInt32) {
+    fileprivate func fire(id: UInt32) {
         handlers[id]?()
     }
+}
+
+/// Carbon event handler for kEventHotKeyPressed; runs on the main thread.
+private func hotKeyEventHandler(
+    _ callRef: EventHandlerCallRef?,
+    _ event: EventRef?,
+    _ userData: UnsafeMutableRawPointer?
+) -> OSStatus {
+    guard let event, let userData else { return OSStatus(eventNotHandledErr) }
+    var hotKeyID = EventHotKeyID()
+    let status = GetEventParameter(
+        event,
+        EventParamName(kEventParamDirectObject),
+        EventParamType(typeEventHotKeyID),
+        nil,
+        MemoryLayout<EventHotKeyID>.size,
+        nil,
+        &hotKeyID
+    )
+    guard status == noErr else { return status }
+    let center = Unmanaged<HotkeyCenter>.fromOpaque(userData).takeUnretainedValue()
+    let id = hotKeyID.id
+    MainActor.assumeIsolated {
+        center.fire(id: id)
+    }
+    return noErr
 }
